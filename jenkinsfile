@@ -1,80 +1,82 @@
 pipeline {
-   
+    
     agent any
-   
-    tools {
-       
-        maven 'Maven-Tool'
-       
-    }
-   
-    environment {
-           
-            IP_ADDRESS = "172.31.7.77"
-        }
-   
-    stages {
-       
-        stage ("Git Checkout") {
-           
-            steps {
-               
-                git branch: 'main', credentialsId: 'Github_Token',
-                url: 'https://github.com/abhishekishor/tomcat-maven-jenkins.git'
-               
-            }
-           
-        }
-       
-        stage ("Maven Build") {
-           
-            steps {
-               
-                sh "mvn clean package"
-               
-            }
-        }
-       
-        stage ("Upload War File") {
-           
-            steps {
+    
+      stages {
+        stage ('Git-Checkout') {
             
-                sshagent(['tomcat-server']) {
-                       
-                    sh "scp -o StrictHostKeyChecking=no $WORKSPACE/target/maven-web-application.war ubuntu@172.31.21.87:/opt/tomcat/webapps"
-                       
-                    archiveArtifacts artifacts: '**/*.war'                  
-                }               
-            }           
-        }
-       
-        stage ("Upload-Artifact") {
-           
             steps {
-               
-                script {
-                   
-                    def mavenPom = readMavenPom file: 'pom.xml'
-                   
-                    nexusArtifactUploader artifacts: [
-                        [
-                            artifactId: "${mavenPom.artifactId}",
-                            classifier: '',
-                            file: "target/${mavenPom.artifactId}.war",
-                            type: "${mavenPom.packaging}"
-                        ]
-                    ],
-                        credentialsId: 'nexus3',
-                        groupId: "${mavenPom.groupId}",
-                        nexusUrl: "${env.IP_ADDRESS}:8081",
-                        nexusVersion: 'nexus3',
-                        protocol: 'http',
-                        repository: 'jenkins-tocat-nexus-release/',
-                        version: "${mavenPom.version}"                   
-                }
-               
+                
+                git branch: 'main',
+                url: 'https://github.com/VardhanLearn/jenkins-maven-sonarqube.git'
+                
             }
-           
-        }       
-    }
+        }  
+        
+        stage ('Maven-Build') {
+             
+             steps {
+                
+                sh 'mvn clean package'   
+             }
+        }
+             
+             
+	    stage ('sonar') {
+	        
+	        steps {
+	            
+	            withSonarQubeEnv ('sonar') {
+	             
+	             sh 'mvn sonar:sonar' 
+	             
+	            }
+	        }
+	    }
+	    stage ('Upload jar file to nexus'){
+	        
+	        steps{
+	            
+	            nexusArtifactUploader artifacts: [
+	                [
+	                    artifactId: 'java-web-app', 
+	                    classifier: '',
+	                    file: 'target/java-web-app-3.3.0.jar',
+	                    type: 'jar'
+	               ]
+	           ],
+	           credentialsId: 'nexus-credentials',
+	           groupId: 'com.example',
+	           nexusUrl: '13.233.215.135:8081',
+	           nexusVersion: 'nexus3',
+	           protocol: 'http',
+	           repository: 'Vardhan-app',
+	           version: '3.3.0'
+	        }
+	        
+	    }
+	    
+	    stage ('Deploy jar file to Tomcat'){
+	    
+	      steps {
+		  
+		   sshagent(['tomcat-credentials']){
+	      
+	            sh """
+			     scp -o StrictHostKeyChecking=no target/*.jar ubuntu@3.110.162.211:/opt/tomcat-9/webapps
+		       	 ssh -o StrictHostKeyChecking=no ubuntu@3.110.162.211 /opt/tomcat-9/bin/shutdown.sh
+			     ssh -o StrictHostKeyChecking=no ubuntu@3.110.162.211 /opt/tomcat-9/bin/startup.sh		
+
+		       """
+	   }
+	  }
+	 }
+    }    
+             post {
+	          success {
+	              echo 'Now Archiving it'
+	              archiveArtifacts artifacts: '**/*.jar'
+	           }
+	        }
 }
+	        
